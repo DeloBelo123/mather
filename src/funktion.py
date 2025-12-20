@@ -213,6 +213,30 @@ class Funktion:
                 wende_punkte.append(Punkt(x=np.x, y=self.von(np.x)))
         return wende_punkte
 
+
+    def tangente(self,stelle:int) -> "Funktion":
+        tangenten_terme:List[Union[Term,AbsolutesGlied,int]] = []
+        tangenten_punkt = Punkt(x=stelle,y=self.von(stelle))
+        fs = self.ableitung()
+        steigung = fs.von(stelle)
+        
+        y_achsenabschnitt = tangenten_punkt.y - steigung * tangenten_punkt.x
+        
+        tangenten_terme.append(Term(
+            koeffizient=abs(steigung),
+            exponent=1,
+            vorzeichen="+" if steigung >= 0 else "-",
+            name="x"
+        ))
+        
+        if abs(y_achsenabschnitt) > 0.0001:
+            tangenten_terme.append(AbsolutesGlied(
+                value=abs(int(y_achsenabschnitt)),
+                vorzeichen="+" if y_achsenabschnitt >= 0 else "-"
+            ))
+        
+        return Funktion(tangenten_terme)
+
     def __add__(self, other: "Funktion") -> "Funktion":
         neue_terme: List[Union[Term, AbsolutesGlied, int]] = []
         

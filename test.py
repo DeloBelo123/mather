@@ -1,4 +1,3 @@
-from src.funktion import Funktion
+from src.funktion import Funktion,Punkt
 
-f = Funktion("x^2")
-print(f.ableitung())
+f = Funktion("x^2 +3x +2")
