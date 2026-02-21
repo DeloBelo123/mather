@@ -3,7 +3,6 @@ from src.regex import parseFunktion
 from src.mather import Term,AbsolutesGlied,Punkt,GlobalVerhalten,ExtremPunkte
 
 class Funktion:
-
     def __init__(self,terme:Union[List[Union[Term, AbsolutesGlied, int]],str]):
         if isinstance(terme,str):
             self.terme = parseFunktion(terme)
@@ -11,7 +10,7 @@ class Funktion:
             self.terme = terme
 
 
-    def von(self,value:int) -> float:
+    def __call__(self,value:int) -> float:
         lösungen:List[float] = []
         for term in self.terme:
             ausrechnung = None
@@ -28,12 +27,12 @@ class Funktion:
         return ergebnis
 
 
-    def ableitung(self,nr:int = 1) -> "Funktion":
-        if nr <= 0:
+    def ableitung(self,wie_vielte_ableitung:int = 1) -> "Funktion":
+        if wie_vielte_ableitung <= 0:
             return self
         
         result = self
-        for _ in range(nr):
+        for _ in range(wie_vielte_ableitung):
             new_terme:List[Union[Term, AbsolutesGlied, int]] = []
             for term in result.terme:
                 if isinstance(term, AbsolutesGlied):
@@ -139,7 +138,7 @@ class Funktion:
 
     def integrieren(self,von:int,bis:int) -> float:
         F = self.aufleitung()
-        return F.von(bis) - F.von(von)
+        return F(bis) - F(von)
 
 
     def null_punkte(self, suchbereich_start: int = -100, suchbereich_ende: int = 100, schrittweite: float = 1.0, genauigkeit: float = 0.001) -> List[Punkt]:
@@ -147,7 +146,7 @@ class Funktion:
         x = float(suchbereich_start)
         
         while x < suchbereich_ende:
-            y1, y2 = self.von(x), self.von(x + schrittweite)
+            y1, y2 = self(x), self(x + schrittweite)
             
             if abs(y1) < genauigkeit:
                 if not any(abs(np.x - x) < genauigkeit for np in nullpunkte):
@@ -156,7 +155,7 @@ class Funktion:
                 a, b, y_a = x, x + schrittweite, y1
                 while abs(b - a) > genauigkeit:
                     mitte = (a + b) / 2
-                    y_mitte = self.von(mitte)
+                    y_mitte = self(mitte)
                     if abs(y_mitte) < genauigkeit:
                         nullpunkt = Punkt(x=mitte, y=0)
                         break
@@ -184,15 +183,15 @@ class Funktion:
         
         if len(null_punkte) > 0:
             for np in null_punkte:
-                bisschen_vor_is_positiv = fs.von(np.x - 0.1) > 0
-                bisschen_nach_is_positiv = fs.von(np.x + 0.1) > 0
+                bisschen_vor_is_positiv = fs(np.x - 0.1) > 0
+                bisschen_nach_is_positiv = fs(np.x + 0.1) > 0
                 
                 if bisschen_vor_is_positiv and not bisschen_nach_is_positiv:
-                    hoch_punkte.append(Punkt(x=np.x, y=self.von(np.x)))
+                    hoch_punkte.append(Punkt(x=np.x, y=self(np.x)))
                 elif not bisschen_vor_is_positiv and bisschen_nach_is_positiv:
-                    tief_punkte.append(Punkt(x=np.x, y=self.von(np.x)))
+                    tief_punkte.append(Punkt(x=np.x, y=self(np.x)))
                 else:
-                    sattel_punkte.append(Punkt(x=np.x, y=self.von(np.x)))
+                    sattel_punkte.append(Punkt(x=np.x, y=self(np.x)))
         
         return {
             "hoch_punkte": hoch_punkte,
@@ -205,20 +204,20 @@ class Funktion:
         null_punkte = fss.null_punkte()
         wende_punkte:List[Punkt] = []
         for np in null_punkte:
-            bisschen_vor = fss.von(np.x - 0.1)
-            bisschen_nach = fss.von(np.x + 0.1)
+            bisschen_vor = fss(np.x - 0.1)
+            bisschen_nach = fss(np.x + 0.1)
             if abs(bisschen_vor) < 0.001 and abs(bisschen_nach) < 0.001:
                 continue
             if (bisschen_vor > 0 and bisschen_nach < 0) or (bisschen_vor < 0 and bisschen_nach > 0):
-                wende_punkte.append(Punkt(x=np.x, y=self.von(np.x)))
+                wende_punkte.append(Punkt(x=np.x, y=self(np.x)))
         return wende_punkte
 
 
     def tangente(self,stelle:int) -> "Funktion":
         tangenten_terme:List[Union[Term,AbsolutesGlied,int]] = []
-        tangenten_punkt = Punkt(x=stelle,y=self.von(stelle))
+        tangenten_punkt = Punkt(x=stelle,y=self(stelle))
         fs = self.ableitung()
-        steigung = fs.von(stelle)
+        steigung = fs(stelle)
         
         y_achsenabschnitt = tangenten_punkt.y - steigung * tangenten_punkt.x
         
@@ -236,6 +235,34 @@ class Funktion:
             ))
         
         return Funktion(tangenten_terme)
+
+
+    def sekante(self, stelle1: float, stelle2: float) -> "Funktion":
+        if stelle1 == stelle2:
+            raise ValueError("Sekante braucht zwei verschiedene Stellen")
+        p1 = Punkt(x=stelle1, y=self(stelle1))
+        p2 = Punkt(x=stelle2, y=self(stelle2))
+        steigung = (p2.y - p1.y) / (p2.x - p1.x)
+        y_achsenabschnitt = p1.y - steigung * p1.x
+
+        sekanten_terme: List[Union[Term, AbsolutesGlied, int]] = []
+        sekanten_terme.append(Term(
+            koeffizient=abs(steigung),
+            exponent=1,
+            vorzeichen="+" if steigung >= 0 else "-",
+            name="x"
+        ))
+        if abs(y_achsenabschnitt) > 0.0001:
+            sekanten_terme.append(AbsolutesGlied(
+                value=abs(int(y_achsenabschnitt)),
+                vorzeichen="+" if y_achsenabschnitt >= 0 else "-"
+            ))
+        return Funktion(sekanten_terme)
+
+
+    def durchschnittliche_änderungsrate(self,von:int,bis:int) -> int:
+        return (self(bis) - self(von)) / (bis - von)
+
 
     def __add__(self, other: "Funktion") -> "Funktion":
         neue_terme: List[Union[Term, AbsolutesGlied, int]] = []
@@ -285,7 +312,7 @@ class Funktion:
 
     def __str__(self) -> str:
         teile = []
-        
+    
         for i, term in enumerate(self.terme):
             if isinstance(term, int) and term == 0:
                 continue
@@ -323,7 +350,6 @@ class Funktion:
                 teile.append(vorzeichen_str + str(term.value))
         
         if not teile:
-            return "0"
-        
-        result = "".join(teile)
-        return result.strip()
+            return "f(x) = 0"
+
+        return f"y = " + "".join(teile).strip()
