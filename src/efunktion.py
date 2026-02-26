@@ -6,30 +6,35 @@ from src.mather import Punkt,GlobalVerhalten,ExtremPunkte
 
 def parseEFunktion(funktions_string:str) -> tuple:
     s = funktions_string.strip()
-    pattern = r'^([+-]?\d*\.?\d*)\*?e\^([+-]?\d*\.?\d*)x(?:\s*([+-]\s*\d+\.?\d*))?$'
-    match = re.match(pattern, s)
-    if not match:
-        raise ValueError(f"Ungültiges E-Funktions-Format: {s}")
 
-    a_str,c_str,b_str = match.groups()
+    pattern_mit_d = r'^([+-]?\d*\.?\d*)\*?e\^\(([+-]?\d*\.?\d*)x\s*([+-]\s*\d+\.?\d*)\)(?:\s*([+-]\s*\d+\.?\d*))?$'
+    match = re.match(pattern_mit_d, s)
+    if match:
+        a_str,c_str,d_str,b_str = match.groups()
+        a = _parse_koeff(a_str)
+        c = _parse_koeff(c_str)
+        d = float(d_str.replace(' ',''))
+        b = 0.0 if b_str is None else float(b_str.replace(' ',''))
+        return a,c,d,b
 
-    if a_str in ('','+'):
-        a = 1.0
-    elif a_str == '-':
-        a = -1.0
-    else:
-        a = float(a_str)
+    pattern_ohne_d = r'^([+-]?\d*\.?\d*)\*?e\^\(?([+-]?\d*\.?\d*)x\)?(?:\s*([+-]\s*\d+\.?\d*))?$'
+    match = re.match(pattern_ohne_d, s)
+    if match:
+        a_str,c_str,b_str = match.groups()
+        a = _parse_koeff(a_str)
+        c = _parse_koeff(c_str)
+        b = 0.0 if b_str is None else float(b_str.replace(' ',''))
+        return a,c,0.0,b
 
-    if c_str in ('','+'):
-        c = 1.0
-    elif c_str == '-':
-        c = -1.0
-    else:
-        c = float(c_str)
+    raise ValueError(f"Ungültiges E-Funktions-Format: {s}")
 
-    b = 0.0 if b_str is None else float(b_str.replace(' ',''))
 
-    return a,c,b
+def _parse_koeff(s:str) -> float:
+    if s in ('','+'):
+        return 1.0
+    if s == '-':
+        return -1.0
+    return float(s)
 
 
 def _zahl_str(n:float) -> str:
@@ -41,15 +46,23 @@ def _zahl_str(n:float) -> str:
 class EFunktion:
     def __init__(self,eingabe:Union[str,tuple]):
         if isinstance(eingabe,str):
-            self.a,self.c,self.b = parseEFunktion(eingabe)
+            self.a,self.c,self.d,self.b = parseEFunktion(eingabe)
+        elif isinstance(eingabe,tuple) and len(eingabe) == 4:
+            self.a = float(eingabe[0])
+            self.c = float(eingabe[1])
+            self.d = float(eingabe[2])
+            self.b = float(eingabe[3])
         elif isinstance(eingabe,tuple) and len(eingabe) == 3:
-            self.a,self.c,self.b = float(eingabe[0]),float(eingabe[1]),float(eingabe[2])
+            self.a = float(eingabe[0])
+            self.c = float(eingabe[1])
+            self.d = 0.0
+            self.b = float(eingabe[2])
         else:
-            raise ValueError("Eingabe muss ein String oder ein Tupel (a, c, b) sein")
+            raise ValueError("Eingabe muss ein String oder ein Tupel (a,c,d,b) bzw. (a,c,b) sein")
 
 
     def __call__(self,x:float) -> float:
-        return self.a * math.exp(self.c * x) + self.b
+        return self.a * math.exp(self.c * x + self.d) + self.b
 
 
     def ableitung(self,wie_vielte_ableitung:int = 1) -> "EFunktion":
@@ -57,7 +70,7 @@ class EFunktion:
             return self
         result = self
         for _ in range(wie_vielte_ableitung):
-            result = EFunktion((result.a * result.c, result.c, 0.0))
+            result = EFunktion((result.a * result.c, result.c, result.d, 0.0))
         return result
 
 
@@ -68,13 +81,13 @@ class EFunktion:
         for _ in range(wie_vielte_aufleitung):
             if result.c == 0:
                 raise ValueError("Aufleitung nicht möglich wenn c = 0")
-            result = EFunktion((result.a / result.c, result.c, 0.0))
+            result = EFunktion((result.a / result.c, result.c, result.d, 0.0))
         return result
 
 
     def global_verhalten(self) -> GlobalVerhalten:
         if self.c == 0:
-            wert = _zahl_str(self.a + self.b)
+            wert = _zahl_str(self.a * math.exp(self.d) + self.b)
             return {
                 "p_unendlich":f"f(x) -> {wert}",
                 "m_unendlich":f"f(x) -> {wert}"
@@ -106,8 +119,8 @@ class EFunktion:
 
     def integrieren(self,von:float,bis:float) -> float:
         if self.c == 0:
-            return (self.a + self.b) * (bis - von)
-        e_teil = (self.a / self.c) * (math.exp(self.c * bis) - math.exp(self.c * von))
+            return (self.a * math.exp(self.d) + self.b) * (bis - von)
+        e_teil = (self.a / self.c) * (math.exp(self.c * bis + self.d) - math.exp(self.c * von + self.d))
         b_teil = self.b * (bis - von)
         return e_teil + b_teil
 
@@ -120,7 +133,7 @@ class EFunktion:
             return []
         if self.c == 0:
             return []
-        x = math.log(quotient) / self.c
+        x = (math.log(quotient) - self.d) / self.c
         return [Punkt(x=round(x,4),y=0.0)]
 
 
@@ -189,15 +202,15 @@ class EFunktion:
 
 
     def __add__(self,other:"EFunktion") -> "EFunktion":
-        if self.c != other.c:
-            raise ValueError("Addition nur möglich wenn beide den gleichen Exponenten c haben")
-        return EFunktion((self.a + other.a, self.c, self.b + other.b))
+        if self.c != other.c or self.d != other.d:
+            raise ValueError("Addition nur möglich wenn c und d gleich sind")
+        return EFunktion((self.a + other.a, self.c, self.d, self.b + other.b))
 
 
     def __sub__(self,other:"EFunktion") -> "EFunktion":
-        if self.c != other.c:
-            raise ValueError("Subtraktion nur möglich wenn beide den gleichen Exponenten c haben")
-        return EFunktion((self.a - other.a, self.c, self.b - other.b))
+        if self.c != other.c or self.d != other.d:
+            raise ValueError("Subtraktion nur möglich wenn c und d gleich sind")
+        return EFunktion((self.a - other.a, self.c, self.d, self.b - other.b))
 
 
     def __str__(self) -> str:
@@ -218,7 +231,13 @@ class EFunktion:
             else:
                 c_teil = _zahl_str(self.c) + "x"
 
-            teile.append(f"{a_teil}e^{c_teil}")
+            if self.d != 0:
+                d_vz = " + " if self.d > 0 else " - "
+                exp_teil = f"({c_teil}{d_vz}{_zahl_str(abs(self.d))})"
+            else:
+                exp_teil = c_teil
+
+            teile.append(f"{a_teil}e^{exp_teil}")
 
         if self.b != 0:
             if teile:
